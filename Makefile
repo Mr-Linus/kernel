@@ -31,4 +31,9 @@ clean:
 	$(RM) $(S_OBJECTS) $(C_OBJECTS) cherry_kernel
 
 qemu:
-	qemu-system-i386 -m 512M -smp 2 -kernel cherry_kernel
+	qemu-system-i386 -m 512M -smp 2 -kernel cherry_kernel 
+
+debug:
+	qemu-system-i386 -m 512M -smp 2 -kernel cherry_kernel -s -S &
+	sleep 1
+	cgdb -x scripts/gdbinit
