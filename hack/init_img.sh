@@ -67,3 +67,5 @@ case $key in
 	;;
 	*)
 		exit
+        ;;
+esac

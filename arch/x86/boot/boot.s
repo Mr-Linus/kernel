@@ -1,97 +1,63 @@
-;Linus @2021.6.1
+MBOOT_HEADER_MAGIC 	equ 	0x1BADB002 	; Multiboot 魔数，由规范决定的
 
-MBT_HDR_FLAGS	EQU 0x00010003
-MBT_HDR_MAGIC	EQU 0x1BADB002 ;多引导协议头魔数
-MBT_HDR2_MAGIC	EQU 0xe85250d6 ;第二版多引导协议头魔数
-global _start ;导出_start符号
-extern main ;导入外部的main函数符号
+MBOOT_PAGE_ALIGN 	equ 	1 << 0    	; 0 号位表示所有的引导模块将按页(4KB)边界对齐
+MBOOT_MEM_INFO 		equ 	1 << 1    	; 1 号位通过 Multiboot 信息结构的 mem_* 域包括可用内存的信息
+						; (告诉GRUB把内存空间的信息包含在Multiboot信息结构中)
 
-[section .start.text] ;定义.start.text代码节
-[bits 32] ;汇编成32位代码
-_start:
-	jmp _entry
-ALIGN 8
-mbt_hdr:
-	dd MBT_HDR_MAGIC
-	dd MBT_HDR_FLAGS
-	dd -(MBT_HDR_MAGIC+MBT_HDR_FLAGS)
-	dd mbt_hdr
-	dd _start
-	dd 0
-	dd 0
-	dd _entry
+; 定义我们使用的 Multiboot 的标记
+MBOOT_HEADER_FLAGS 	equ 	MBOOT_PAGE_ALIGN | MBOOT_MEM_INFO
 
-;以上是GRUB所需要的头
-ALIGN 8
-mbt2_hdr:
-	DD	MBT_HDR2_MAGIC
-	DD	0
-	DD	mbt2_hdr_end - mbt2_hdr
-	DD	-(MBT_HDR2_MAGIC + 0 + (mbt2_hdr_end - mbt2_hdr))
-	DW	2, 0
-	DD	24
-	DD	mbt2_hdr
-	DD	_start
-	DD	0
-	DD	0
-	DW	3, 0
-	DD	12
-	DD	_entry
-	DD      0
-	DW	0, 0
-	DD	8
-mbt2_hdr_end:
-;以上是GRUB2所需要的头
-;包含两个头是为了同时兼容GRUB、GRUB2
+; 域checksum是一个32位的无符号值，当与其他的magic域(也就是magic和flags)相加时，
+; 要求其结果必须是32位的无符号值 0 (即magic + flags + checksum = 0)
+MBOOT_CHECKSUM 		equ 	- (MBOOT_HEADER_MAGIC + MBOOT_HEADER_FLAGS)
 
-ALIGN 8
+; 符合Multiboot规范的 OS 映象需要这样一个 magic Multiboot 头
 
-_entry:
-	;关中断
-	cli
-	;关不可屏蔽中断
-	in al, 0x70
-	or al, 0x80
-	out 0x70,al
-	;重新加载GDT
-	lgdt [GDT_PTR]
-	jmp dword 0x8 :_32bits_mode
+; Multiboot 头的分布必须如下表所示：
+; ----------------------------------------------------------
+; 偏移量  类型  域名        备注
+;
+;   0     u32   magic       必需
+;   4     u32   flags       必需 
+;   8     u32   checksum    必需 
+;
+; 我们只使用到这些就够了，更多的详细说明请参阅 GNU 相关文档
+;-----------------------------------------------------------
 
-_32bits_mode:
-	;下面初始化C语言可能会用到的寄存器
-	mov ax, 0x10
-	mov ds, ax
-	mov ss, ax
-	mov es, ax
-	mov fs, ax
-	mov gs, ax
-	xor eax,eax
-	xor ebx,ebx
-	xor ecx,ecx
-	xor edx,edx
-	xor edi,edi
-	xor esi,esi
-	xor ebp,ebp
-	xor esp,esp
-	;初始化栈，C语言需要栈才能工作
-	mov esp,0x9000
-	;调用C语言函数main
-	call main
-	;让CPU停止执行指令
-halt_step:
-	halt
-	jmp halt_step
+;-----------------------------------------------------------------------------
 
+[BITS 32]  	; 所有代码以 32-bit 的方式编译
 
-GDT_START:
-knull_dsc: dq 0
-kcode_dsc: dq 0x00cf9e000000ffff
-kdata_dsc: dq 0x00cf92000000ffff
-k16cd_dsc: dq 0x00009e000000ffff
-k16da_dsc: dq 0x000092000000ffff
-GDT_END:
+section .text 	; 代码段从这里开始
 
-GDT_PTR:
-GDTLEN	dw GDT_END-GDT_START-1
-GDTBASE	dd GDT_START
+; 在代码段的起始位置设置符合 Multiboot 规范的标记
 
+dd MBOOT_HEADER_MAGIC 	; GRUB 会通过这个魔数判断该映像是否支持
+dd MBOOT_HEADER_FLAGS   ; GRUB 的一些加载时选项，其详细注释在定义处
+dd MBOOT_CHECKSUM       ; 检测数值，其含义在定义处
+
+[GLOBAL start] 		; 内核代码入口，此处提供该声明给 ld 链接器
+[GLOBAL glb_mboot_ptr] 	; 全局的 struct multiboot * 变量
+[EXTERN kern_entry] 	; 声明内核 C 代码的入口函数
+
+start:
+	cli  			 ; 此时还没有设置好保护模式的中断处理，要关闭中断
+				 ; 所以必须关闭中断
+	mov esp, STACK_TOP  	 ; 设置内核栈地址
+	mov ebp, 0 		 ; 帧指针修改为 0
+	and esp, 0FFFFFFF0H	 ; 栈地址按照16字节对齐
+	mov [glb_mboot_ptr], ebx ; 将 ebx 中存储的指针存入全局变量
+	call kern_entry		 ; 调用内核入口函数
+stop:
+	hlt 			 ; 停机指令，什么也不做，可以降低 CPU 功耗
+	jmp stop 		 ; 到这里结束，关机什么的后面再说
+
+;-----------------------------------------------------------------------------
+
+section .bss 			 ; 未初始化的数据段从这里开始
+stack:
+	resb 32768 	 	 ; 这里作为内核栈
+glb_mboot_ptr: 			 ; 全局的 multiboot 结构体指针
+	resb 4
+
+STACK_TOP equ $-stack-1 	 ; 内核栈顶，$ 符指代是当前地址
