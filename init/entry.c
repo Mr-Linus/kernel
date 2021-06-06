@@ -2,13 +2,15 @@
 #include "debug.h"
 int kern_entry()
 {
-init_debug();
+	init_debug();
 
 	console_clear();
 
-	printk_color(rc_black, rc_green, "Hello, OS kernel!\n");
+	printk_color(rc_black, rc_green, "Hello, CherryOS kernel!\n");
 
-	panic("test");
+	print_cur_status();
+
+	panic("debug-panic");
 
 	return 0;
 

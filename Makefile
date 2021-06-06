@@ -24,16 +24,21 @@ all: $(S_OBJECTS) $(C_OBJECTS) link
 
 link:
 	@echo 链接内核文件...
-	$(LD) $(LD_FLAGS) $(S_OBJECTS) $(C_OBJECTS) -o cherry_kernel
+	$(LD) $(LD_FLAGS) $(S_OBJECTS) $(C_OBJECTS) -o cherryos_kernel
 
 .PHONY:clean
 clean:
-	$(RM) $(S_OBJECTS) $(C_OBJECTS) cherry_kernel
+	$(RM) $(S_OBJECTS) $(C_OBJECTS) cherryos_kernel kernel.dump
 
 qemu:
-	qemu-system-i386 -m 512M -smp 2 -kernel cherry_kernel 
+	qemu-system-i386 -m 512M -smp 2 -kernel cherryos_kernel 
+
+debug-qemu:
+	qemu-system-i386 -m 512M -smp 2 -kernel cherryos_kernel -s -S 
 
 debug:
-	qemu-system-i386 -m 512M -smp 2 -kernel cherry_kernel -s -S &
 	sleep 1
 	cgdb -x scripts/gdbinit
+
+objdump:
+	objdump -M intel -d cherryos_kernel > kernel.dump

@@ -1,0 +1,15 @@
+{
+    "files.associations": {
+        "__bit_reference": "cpp",
+        "__string": "cpp",
+        "cstring": "cpp",
+        "atomic": "cpp",
+        "memory": "cpp",
+        "utility": "cpp",
+        "algorithm": "c",
+        "cmath": "c",
+        "complex": "c",
+        "functional": "c",
+        "locale": "c"
+    }
+}
