@@ -3,6 +3,7 @@
 int kern_entry()
 {
 	init_debug();
+	init_gdt();
 
 	console_clear();
 
